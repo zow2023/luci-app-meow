@@ -47,4 +47,4 @@ jobs:
         uses: ad-m/github-push-action@master
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          branch: main    # 注意:与本仓库默认分支一致(honk 模板是 master,这里是 main)
+          branch: main
