@@ -1,19 +1,3 @@
-## 目录结构
-
-openwrt-meow-feed/
-├── README.md
-├── meow/
-│   ├── Makefile
-│   └── files/
-│       ├── meow.init        # procd init 脚本(取自上游 openwrt/meow/files/)
-│       ├── meow.config      # /etc/config/meow UCI 默认配置
-│       └── config.yaml      # /etc/meow/config.yaml 默认配置
-└── luci-app-meow/
-    ├── Makefile
-    ├── htdocs/luci-static/resources/view/meow/{panel.js,settings.js}
-    └── root/usr/share/{luci/menu.d/luci-app-meow.json,rpcd/acl.d/luci-app-meow.json}
-```
-
 本仓库完全自包含:init 脚本、UCI 默认配置、默认 YAML、LuCI JS/JSON 均已收录
 (取自 meow-rs 仓库 `openwrt/` 目录),CI 里不需要再从上游仓库复制任何文件;
 构建时唯一的外部依赖是 `meow/Makefile` 声明的官方 release tarball
