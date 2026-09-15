@@ -4,11 +4,20 @@
 		"read": {
 			"uci": [ "meow" ],
 			"ubus": {
-				"service": [ "list" ]
+				"service": [ "list" ],
+				"file": {
+					"read": [ "/etc/meow/*" ]
+				}
 			}
 		},
 		"write": {
-			"uci": [ "meow" ]
+			"uci": [ "meow" ],
+			"ubus": {
+				"file": {
+					"write": [ "/etc/meow/*" ],
+					"exec": [ "/bin/chmod", "/etc/init.d/meow" ]
+				}
+			}
 		}
 	}
 }
