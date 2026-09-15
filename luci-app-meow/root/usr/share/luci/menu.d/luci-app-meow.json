@@ -27,5 +27,14 @@
 			"type": "view",
 			"path": "meow/settings"
 		}
+	},
+
+	"admin/services/meow/config": {
+		"title": "Config",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "meow/config"
+		}
 	}
 }
