@@ -18,7 +18,7 @@ PKG_BUILD_DIR:=$(BUILD_DIR)/meow-rs-$(PKG_VERSION)
 
 include $(INCLUDE_DIR)/package.mk
 # 2. 引入 OpenWrt 官方 Rust 编译支持链
-include ../../lang/rust/rust-package.mk
+include $(TOPDIR)/feeds/packages/lang/rust/rust-package.mk
 
 define Package/meow
   SECTION:=net
