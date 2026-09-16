@@ -5,6 +5,7 @@
 			"uci": [ "meow" ],
 			"ubus": {
 				"service": [ "list" ],
+				"log": [ "read" ],
 				"file": {
 					"read": [ "/etc/meow/*" ]
 				}
