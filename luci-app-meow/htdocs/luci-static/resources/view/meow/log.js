@@ -13,13 +13,17 @@
  * output goes into the system log (syslog/logd ring buffer, in /tmp).
  * This view therefore reads the syslog via the ubus `log` object and
  * filters lines belonging to the meow service in the frontend.
+ * 
+ * On this firmware the ubus `log read` entries use field `msg` (not
+ * `data` as I previously assumed), so the front-end reads msg, with a
+ * data fallback just in case.
  */
 
 var callSystemLog = rpc.declare({
 	object: 'log',
 	method: 'read',
 	params: [ 'lines', 'stream' ],
-	expect: { lines: [] }
+	expect: {}
 });
 
 var serviceTag = 'meow';
@@ -41,7 +45,7 @@ return view.extend({
 			}					\
 			#log_textarea pre {			\
 				padding: .7rem;			\
-				word-break: break-all;		\
+				word-break: break-all;	\
 				margin: 0;				\
 				font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;	\
 				line-height: 1.4;		\
@@ -208,17 +212,34 @@ return view.extend({
 				return Promise.resolve();
 			}
 
-			return callSystemLog(null, false)
-				.then(function (lines) {
-					/* expect: { lines: [] } → the resolved value IS the lines
-					 * array itself (rpc.js strips one level), not a wrapper
-					 * object with a .lines property. */
-					var entries = Array.isArray(lines) ? lines : [];
+			return callSystemLog(100, false)
+				.then(function (res) {
+					/* ubus `log read` 在不同固件/版本下顶层结构不统一：
+					 *   logd:        { "log":   [ { msg, id, ... }, ... ] }
+					 *   老 syslog 接口: { "lines": [ { msg, id, ... }, ... ] }
+					 *   少数情况直接返回数组本身。
+					 * 这里不挑固件，按数组可能性依次尝试。
+					 *
+					 * ubus log read 返回的条目字段是 `msg`（不是 `data`，
+					 * 我上一轮这里写错了——你机器上验证就是 `msg`）。
+					 * 不过保留 `data` 作为兜底，万一日后固件换字段。
+					 */
+					var entries;
+					if (Array.isArray(res))
+						entries = res;
+					else if (res && Array.isArray(res.log))
+						entries = res.log;
+					else if (res && Array.isArray(res.lines))
+						entries = res.lines;
+					else
+						entries = [];
+
 					var meowLines = [];
 
 					for (var i = 0; i < entries.length; i++) {
-						var data = (entries[i] && entries[i].data) ? entries[i].data : '';
-
+						var e = entries[i];
+						if (!e) continue;
+						var data = e.msg || e.data || '';
 						if (data && tagRegex.test(data))
 							meowLines.push(data);
 					}
