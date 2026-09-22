@@ -32,6 +32,7 @@ endef
 define Package/meow/conffiles
 /etc/config/meow
 /etc/meow/config.yaml
+/etc/meow/gateway.nft 
 endef
 
 # 二进制是官方发布的静态 musl 构建,无需在 buildroot 内编译
@@ -44,6 +45,9 @@ define Package/meow/install
 	$(INSTALL_BIN)  ./files/meow.init            $(1)/etc/init.d/meow
 	$(INSTALL_DATA) ./files/meow.config          $(1)/etc/config/meow
 	$(INSTALL_DATA) ./files/config.yaml          $(1)/etc/meow/config.yaml
+    $(INSTALL_DATA) ./files/gateway.nft.template$(1)/etc/meow/gateway.nft.template
+	$(INSTALL_BIN)  ./files/firewall.sh$(1)/etc/meow/firewall.sh
+	$(INSTALL_BIN)  ./files/uci-defaults/99-meow-firewall$(1)/etc/uci-defaults/99-meow-firewall
 endef
 
 $(eval $(call BuildPackage,meow))
