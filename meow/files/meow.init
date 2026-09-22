@@ -2,12 +2,66 @@
 # procd init script for meow-rs.
 # Service settings live in /etc/config/meow (UCI); the proxy configuration
 # itself is the regular meow YAML file (default /etc/meow/config.yaml).
+#
+# Gateway mode (optional): when meow.main.gateway=1, a nftables table
+# (inet meow_gateway) intercepts forwarded LAN traffic and hands it to the
+# tproxy listener. The rules are rendered from /etc/meow/gateway.nft.template
+# and loaded AFTER the tproxy listener is confirmed listening (closes the
+# boot race). They are removed on stop, and re-applied on every fw4 reload
+# via the "include type=script" hook registered in /etc/config/firewall.
 
 USE_PROCD=1
 START=95
 STOP=10
 
 PROG=/usr/bin/meow
+NFT_TEMPLATE=/etc/meow/gateway.nft.template
+NFT_RULES=/etc/meow/gateway.nft
+
+# ---------------------------------------------------------------- helpers --
+
+# Render /etc/meow/gateway.nft from the template, substituting the LAN
+# interface/IP (from network config) and ports (from meow UCI settings).
+render_nft() {
+	local lan_if lan_ip tport dport
+
+	lan_if="$(uci -q get network.lan.device)"
+	[ -n "$lan_if" ] || lan_if="$(uci -q get network.lan.ifname)"
+	lan_ip="$(uci -q get network.lan.ipaddr)"
+	# Interfaces running DHCP don't have an ipaddr option; ask ubus instead.
+	[ -n "$lan_ip" ] || lan_ip="$(ifstatus lan 2>/dev/null | jsonfilter -e '@["ipv4-address"][0]')"
+
+	config_get tport main tproxy_port 7893
+	config_get dport main dns_port   1053
+
+	if [ -z "$lan_if" ] || [ -z "$lan_ip" ]; then
+		logger -t meow "cannot determine LAN interface/IP, gateway rules not rendered"
+		return 1
+	fi
+	[ -r "$NFT_TEMPLATE" ] || { logger -t meow "$NFT_TEMPLATE missing"; return 1; }
+
+	sed -e "s|@LAN_IF@|$lan_if|g" \
+	    -e "s|@LAN_IP@|$lan_ip|g" \
+	    -e "s|@TPORT@|$tport|g" \
+	    -e "s|@DNSPORT@|$dport|g" \
+	    "$NFT_TEMPLATE" > "$NFT_RULES" || return 1
+	return 0
+}
+
+# Block (up to 30s) until the tproxy listener is actually bound, so the
+# prerouting REDIRECT never points at a closed port. Busybox netstat is used
+# because 'ss' is only present with the ip-full package.
+wait_tproxy() {
+	local port="$1" i
+	for i in $(seq 1 150); do
+		netstat -lnt 2>/dev/null | grep -q ":$port " && return 0
+		ss -lnt 2>/dev/null       | grep -q ":$port " && return 0
+		sleep 0.2
+	done
+	return 1
+}
+
+# ---------------------------------------------------------------- service --
 
 start_service() {
 	local enabled config_file work_dir
@@ -35,8 +89,37 @@ start_service() {
 	procd_close_instance
 }
 
+# Called by procd after the instance is confirmed running: this is where the
+# gateway rules can safely be loaded (listener is up or about to be).
+service_started() {
+	local enabled gateway tport
+
+	config_load meow
+	config_get_bool enabled main enabled 0
+	[ "$enabled" -eq 1 ] || return 0
+	config_get_bool gateway main gateway 0
+	[ "$gateway" -eq 1 ] || return 0
+	config_get tport main tproxy_port 7893
+
+	if wait_tproxy "$tport"; then
+		if render_nft && nft -f "$NFT_RULES" 2>/dev/null; then
+			logger -t meow "gateway nft rules loaded (tproxy :$tport)"
+		else
+			logger -t meow "failed to load gateway nft rules"
+		fi
+	else
+		logger -t meow "tproxy :$tport not listening after 30s; gateway rules NOT applied"
+	fi
+}
+
+service_stopped() {
+	# Remove the gateway table; meow's own meow_tproxy table (output chain)
+	# is torn down by meow itself on exit.
+	nft delete table inet meow_gateway 2>/dev/null
+}
+
 service_triggers() {
-	procd_add_reload_trigger "meow"
+	procd_add_reload_trigger "meow" "firewall"
 }
 
 reload_service() {
