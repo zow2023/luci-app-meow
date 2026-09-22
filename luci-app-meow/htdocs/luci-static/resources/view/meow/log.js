@@ -13,10 +13,16 @@
  * output goes into the system log (syslog/logd ring buffer, in /tmp).
  * This view therefore reads the syslog via the ubus `log` object and
  * filters lines belonging to the meow service in the frontend.
- * 
+ *
  * On this firmware the ubus `log read` entries use field `msg` (not
- * `data` as I previously assumed), so the front-end reads msg, with a
- * data fallback just in case.
+ * `data` as previously assumed); `data` is kept as a fallback.
+ *
+ * "Clear Log" (view-level, PLAN A):
+ * ubus `log` has no clear method (only read/write), and restarting logd
+ * would erase the WHOLE system log — out of scope for a proxy app.
+ * Instead we remember the highest entry `id` seen at clear time and hide
+ * everything at or below it in subsequent polls. The underlying syslog
+ * data is untouched.
  */
 
 var callSystemLog = rpc.declare({
@@ -27,6 +33,11 @@ var callSystemLog = rpc.declare({
 });
 
 var serviceTag = 'meow';
+
+/* Read a larger window: the syslog ring buffer is shared by all services
+ * (firewall, dropbear, dhcp, ...), so a small `lines` value can easily
+ * contain just a handful of meow entries — or none at all. */
+var LOG_READ_LINES = 1000;
 
 return view.extend({
 	render: function () {
@@ -55,9 +66,6 @@ return view.extend({
 			.log-error { color: #d73a49; font-weight: bold; } \
 			.log-debug { color: #6f42c1; }		\
 			.log-ip { color: #22863a; font-weight: bold; }		\
-			.description {				\
-				background-color: #33ccff;	\
-				}					\
 			.log-container {            \
 				padding: 2px 0;        \
 			}                          \
@@ -165,15 +173,25 @@ return view.extend({
 			}, _('Collecting data…'))
 		);
 
-		function formatLogLine(line) {
-			line = line.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+		function escapeHtml(s) {
+			return s.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;');
+		}
 
+		function formatLogLine(line) {
+			line = escapeHtml(line);
+
+			/* NOTE: level keywords are highlighted before IPs so that
+			 * "info" inside a wrapped IP context can't interfere; the old
+			 * dead `level=` rule was removed — it could never match,
+			 * since the keyword had already been wrapped by the rule
+			 * above by the time it ran. */
 			line = line
 				.replace(/\b(error|failed)\b/g, '<span class="log-error">$1</span>')
 				.replace(/\b(warn|warning)\b/g, '<span class="log-warn">$1</span>')
 				.replace(/\b(info|INFO)\b/g, '<span class="log-info">$1</span>')
-				.replace(/\b(debug|DEBUG)\b/g, '<span class="log-debug">$1</span>')
-				.replace(/\blevel=(error|warn|info|debug)\b/g, 'level=<span class="log-$1">$1</span>');
+				.replace(/\b(debug|DEBUG)\b/g, '<span class="log-debug">$1</span>');
 
 			line = line.replace(/(\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b)/g,
 				'<span class="log-ip">$1</span>');
@@ -186,6 +204,13 @@ return view.extend({
 		var debounceTimeout = null;
 		var isPaused = false;
 
+		/* ---- Clear Log (view-level) state ----
+		 * clearBeforeId: highest syslog entry id present when the user
+		 * hit "Clear". Polling hides entries with id <= clearBeforeId.
+		 * -1 = never cleared. maxSeenId tracks the newest id we saw. */
+		var clearBeforeId = -1;
+		var maxSeenId = -1;
+
 		function debounce(func, wait) {
 			return function (...args) {
 				const context = this;
@@ -196,13 +221,10 @@ return view.extend({
 			};
 		}
 
-		function highlightFilter(text, filter) {
-			if (!filter) return text;
-
-			var safeFilter = filter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-			var regex = new RegExp('(' + safeFilter + ')', 'gi');
-
-			return text.replace(regex, '<span class="filter-highlight">$1</span>');
+		/* Escape a filter string for safe interpolation into HTML built
+		 * from ALREADY-escaped text (used by the filter highlighter). */
+		function escapeFilterForHtml(s) {
+			return escapeHtml(s);
 		}
 
 		var tagRegex = new RegExp('\\b' + serviceTag + '\\b');
@@ -212,18 +234,15 @@ return view.extend({
 				return Promise.resolve();
 			}
 
-			return callSystemLog(100, false)
+			return callSystemLog(LOG_READ_LINES, false)
 				.then(function (res) {
-					/* ubus `log read` 在不同固件/版本下顶层结构不统一：
-					 *   logd:        { "log":   [ { msg, id, ... }, ... ] }
-					 *   老 syslog 接口: { "lines": [ { msg, id, ... }, ... ] }
-					 *   少数情况直接返回数组本身。
-					 * 这里不挑固件，按数组可能性依次尝试。
-					 *
-					 * ubus log read 返回的条目字段是 `msg`（不是 `data`，
-					 * 我上一轮这里写错了——你机器上验证就是 `msg`）。
-					 * 不过保留 `data` 作为兜底，万一日后固件换字段。
-					 */
+					/* ubus `log read` returns different top-level shapes
+					 * across firmware versions:
+					 *   logd:         { "log":   [ { msg, id, ... }, ... ] }
+					 *   legacy iface: { "lines": [ { msg, id, ... }, ... ] }
+					 *   rare:         the array itself.
+					 * Entries carry a monotonically increasing `id` field,
+					 * which the Clear Log feature relies on. */
 					var entries;
 					if (Array.isArray(res))
 						entries = res;
@@ -239,13 +258,28 @@ return view.extend({
 					for (var i = 0; i < entries.length; i++) {
 						var e = entries[i];
 						if (!e) continue;
+
+						/* Track the newest id we have ever seen; the
+						 * Clear button uses it as its cut-off point. */
+						if (typeof e.id === 'number' && e.id > maxSeenId)
+							maxSeenId = e.id;
+
+						/* Hide everything at/below the clear point. */
+						if (clearBeforeId >= 0 &&
+						    typeof e.id === 'number' && e.id <= clearBeforeId)
+							continue;
+
 						var data = e.msg || e.data || '';
 						if (data && tagRegex.test(data))
 							meowLines.push(data);
 					}
 
-					/* syslog is oldest-first; display newest-first like the duck page */
-					meowLines.reverse();
+					/* Keep syslog's natural order: OLDEST FIRST, so the
+					 * "Scroll to tail" button (bottom = newest) matches
+					 * the reading habit of log viewers. The previous
+					 * version reversed the list here, which made the
+					 * tail button scroll to the OLDEST entry. */
+					// (no reverse)
 
 					var formattedLines = meowLines.map(function (line) {
 						return formatLogLine(line);
@@ -257,7 +291,9 @@ return view.extend({
 
 					var logContainer = E('pre', {});
 					logContainer.innerHTML = formattedContent ||
-						_('Log is empty (no meow entries in the system log yet).');
+						(clearBeforeId >= 0
+							? _('Log cleared. New meow entries will appear below.')
+							: _('Log is empty (no meow entries in the system log yet).'));
 
 					dom.content(log_textarea, logContainer);
 
@@ -304,7 +340,8 @@ return view.extend({
 				var logContainer = document.getElementById('log_textarea');
 				var preElem = logContainer.querySelector('pre');
 				if (preElem) {
-					preElem.innerHTML = originalLogContent || _('Log is empty.');
+					preElem.innerHTML = originalLogContent ||
+						_('Log is empty.');
 					logEntriesCache = null;
 				}
 				return;
@@ -318,7 +355,31 @@ return view.extend({
 				entries.forEach(function (entry) {
 					if (entry.text.includes(filter)) {
 						matchCount++;
-						entry.element.innerHTML = highlightFilter(entry.originalHtml, filter);
+
+						/* FIX (was a real bug): the old code ran a
+						 * regex over `originalHtml`, i.e. over markup
+						 * that already contains <span class="log-...">
+						 * tags. A filter like "span", "class" or "log"
+						 * matched INSIDE those tags and corrupted the
+						 * HTML; unescaped filter text could also inject
+						 * arbitrary markup.
+						 *
+						 * New approach: rebuild the line from its plain
+						 * textContent (which is already entity-escaped
+						 * source text), escape it again for HTML, and
+						 * only highlight the filter hits. The tradeoff
+						 * is that level-color highlighting is suspended
+						 * while a filter is active — a correct and
+						 * predictable rendering is worth it. */
+						var plain = entry.element.textContent;
+						var safeText = escapeHtml(plain);
+						var safeFilter = escapeFilterForHtml(filter)
+							.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+						var re = new RegExp('(' + safeFilter + ')', 'gi');
+
+						entry.element.innerHTML =
+							safeText.replace(re,
+								'<span class="filter-highlight">$1</span>');
 						entry.element.style.display = '';
 					} else {
 						entry.element.style.display = 'none';
@@ -394,6 +455,49 @@ return view.extend({
 			}
 		});
 
+		/* ---- Clear Log button (view-level only) ----
+		 * Hides everything currently displayed from this point on.
+		 * The system log itself is NOT modified — ubus `log` has no
+		 * clear method, and restarting logd would wipe the whole
+		 * system log for ALL services, which is out of scope here. */
+		var clearLogButton = E('button', {
+			'id': 'clearLogButton',
+			'class': 'cbi-button cbi-button-negative',
+			'title': _('Hides all currently displayed meow entries in this view. The system log itself is not modified.')
+		}, _('Clear Log'));
+
+		clearLogButton.addEventListener('click', function () {
+			ui.showModal(_('Clear Log'), E('p', {},
+				_('Hide all currently displayed meow log entries? ' +
+				  'This only affects this view — new entries arriving ' +
+				  'afterwards will be shown as usual. The system log ' +
+				  'itself (shared by all services) is not modified.')),
+				[
+					E('div', { 'class': 'right' }, [
+						E('button', {
+							'class': 'btn',
+							'click': ui.hideModal
+						}, _('Cancel')),
+						' ',
+						E('button', {
+							'class': 'btn cbi-button-negative important',
+							'click': ui.createHandlerFn(function () {
+								/* Cut off everything up to the newest id
+								 * we have seen. Subsequent polls skip
+								 * entries with id <= clearBeforeId, so
+								 * old lines cannot "come back". */
+								clearBeforeId = maxSeenId;
+								logEntriesCache = null;
+								dom.content(log_textarea,
+									E('pre', {},
+										_('Log cleared. New meow entries will appear below.')));
+								ui.hideModal();
+							})
+						}, _('Clear'))
+					])
+				]);
+		});
+
 		return E([
 			E('style', [css]),
 			E('h2', {}, [_('Log')]),
@@ -406,7 +510,8 @@ return view.extend({
 					]),
 					E('div', { 'class': 'controls-row' }, [
 						scrollUpButton,
-						scrollDownButton
+						scrollDownButton,
+						clearLogButton
 					])
 				]),
 				E('div', { 'class': 'cbi-section' }, [
