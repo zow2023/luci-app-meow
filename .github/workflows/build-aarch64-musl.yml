@@ -54,15 +54,9 @@ jobs:
             --target aarch64-unknown-linux-musl \
             --bin meow
 
-      - name: Prepare artifact
-        run: |
-          cp meow-rs/target/aarch64-unknown-linux-musl/release/meow \
-             meow-aarch64-unknown-linux-musl
-
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: meow-aarch64-unknown-linux-musl
-          path: meow-aarch64-unknown-linux-musl
-          if-no-files-found: error
+          path: meow-rs/target/aarch64-unknown-linux-musl/release/meow
+          archive: false
           retention-days: 30
