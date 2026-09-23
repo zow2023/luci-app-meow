@@ -37,7 +37,7 @@ return view.extend({
 				overflow-y: auto;			\
 				color-scheme: light dark;	\
 				background-color: #f8f9fa;	\
-				border-radius: 8px;		\
+				border-radius: 8px;			\
 				border: 1px solid #ddd;		\
 				font-size: 13px;			\
 				box-shadow: 0 2px 5px rgba(0,0,0,0.05); \
@@ -191,9 +191,13 @@ return view.extend({
 		var debounceTimeout = null;
 		var isPaused = false;
 
-		/* ---- Clear Log (view-level) state ---- */
-		var clearBeforeId = -1;
+		/* ---- Clear Log (view-level) state ----
+		 * clearCutoff: null = never cleared; otherwise either
+		 *   { id: <max syslog entry id> }  (preferred, logd provides `id`)
+		 *   { time: <max epoch sec> }      (fallback when `id` is absent) */
+		var clearCutoff = null;
 		var maxSeenId = -1;
+		var maxSeenTime = -1;
 
 		function debounce(func, wait) {
 			return function (...args) {
@@ -230,12 +234,21 @@ return view.extend({
 						var e = entries[i];
 						if (!e) continue;
 
+						/* Track newest id/time seen; Clear uses them as cut-off. */
 						if (typeof e.id === 'number' && e.id > maxSeenId)
 							maxSeenId = e.id;
+						if (typeof e.time === 'number' && e.time > maxSeenTime)
+							maxSeenTime = e.time;
 
-						if (clearBeforeId >= 0 &&
-						    typeof e.id === 'number' && e.id <= clearBeforeId)
-							continue;
+						/* Hide everything at/below the clear point. */
+						if (clearCutoff) {
+							if (clearCutoff.id !== undefined &&
+							    typeof e.id === 'number' && e.id <= clearCutoff.id)
+								continue;
+							if (clearCutoff.time !== undefined &&
+							    typeof e.time === 'number' && e.time < clearCutoff.time)
+								continue;
+						}
 
 						var data = e.msg || e.data || '';
 						if (data && tagRegex.test(data))
@@ -254,7 +267,7 @@ return view.extend({
 
 					var logContainer = E('pre', {});
 					logContainer.innerHTML = formattedContent ||
-						(clearBeforeId >= 0
+						(clearCutoff
 							? _('Log cleared. New meow entries will appear below.')
 							: _('Log is empty (no meow entries in the system log yet).'));
 
@@ -406,11 +419,9 @@ return view.extend({
 			}
 		});
 
-		/* ---- Clear Log button (view-level only) ----
-		 * NOTE on ui.showModal usage: children (paragraph + button row)
-		 * must be passed as ONE array in the SECOND argument; the third
-		 * argument is reserved for CSS class names and must never
-		 * receive an array (classList.add throws on whitespace). */
+		/* ---- Clear Log button (view-level, no modal) ----
+		 * Uses addEventListener — the same mechanism as every other button on
+		 * this page, which is proven to work on this build. */
 		var clearLogButton = E('button', {
 			'id': 'clearLogButton',
 			'class': 'cbi-button cbi-button-negative',
@@ -418,34 +429,21 @@ return view.extend({
 		}, _('Clear Log'));
 
 		clearLogButton.addEventListener('click', function () {
-			ui.showModal(_('Clear Log'), [
-				E('p', {}, _('Hide all currently displayed meow log entries? ' +
-					'This only affects this view — new entries arriving ' +
-					'afterwards will be shown as usual. The system log ' +
-					'itself (shared by all services) is not modified.')),
-				E('div', { 'class': 'right' }, [
-					E('button', {
-						'class': 'btn',
-						'click': ui.hideModal
-					}, _('Cancel')),
-					' ',
-					E('button', {
-						'class': 'btn cbi-button-negative important',
-						'click': ui.createHandlerFn(function () {
-							/* Cut off everything up to the newest id
-							 * we have seen. */
-							clearBeforeId = maxSeenId;
-							logEntriesCache = null;
+			if (maxSeenId >= 0)
+				clearCutoff = { id: maxSeenId };
+			else if (maxSeenTime >= 0)
+				clearCutoff = { time: maxSeenTime };
+			else
+				clearCutoff = { time: Math.floor(Date.now() / 1000) };
 
-							dom.content(log_textarea,
-								E('pre', {},
-									_('Log cleared. New meow entries will appear below.')));
+			logEntriesCache = null;
 
-							ui.hideModal();
-						})
-					}, _('Clear'))
-				])
-			]);
+			dom.content(log_textarea,
+				E('pre', {}, _('Log cleared. New meow entries will appear below.')));
+
+			ui.addNotification(null,
+				E('p', {}, _('Meow log view cleared (system log untouched).')),
+				'info');
 		});
 
 		return E([
