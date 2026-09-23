@@ -1,0 +1,69 @@
+name: Build meow aarch64-unknown-linux-musl
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build aarch64-unknown-linux-musl
+    runs-on: ubuntu-latest
+
+    steps:
+      # 拉取上游 meow-rs 的 main 分支最新提交
+      - name: Checkout upstream meow-rs
+        uses: actions/checkout@v5
+        with:
+          repository: meow-rs/meow-rs
+          ref: main
+          path: meow-rs
+          fetch-depth: 1
+
+      # 输出本次实际编译的 commit，方便追溯 Artifact 对应源码
+      - name: Show source revision
+        working-directory: meow-rs
+        shell: bash
+        run: |
+          echo "Source repository: https://github.com/meow-rs/meow-rs"
+          echo "Source branch: main"
+          echo "Source commit: $(git rev-parse HEAD)"
+          git log -1 --oneline
+
+      # Rust
+      - name: Setup Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add aarch64-unknown-linux-musl
+
+      # Zig
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.13.0
+
+      # cargo-zigbuild
+      - name: Install cargo-zigbuild
+        run: cargo install --locked cargo-zigbuild
+
+      # 编译完整版 release binary
+      - name: Build release binary
+        working-directory: meow-rs
+        shell: bash
+        run: |
+          cargo zigbuild \
+            --release \
+            --locked \
+            --target aarch64-unknown-linux-musl \
+            --bin meow
+
+      # 上传最终二进制
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: meow-aarch64-unknown-linux-musl
+          path: meow-rs/target/aarch64-unknown-linux-musl/release/meow
+          if-no-files-found: error
+          archive: false
+          retention-days: 30
