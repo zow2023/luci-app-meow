@@ -15,7 +15,14 @@ var callServiceList = rpc.declare({
 function getServiceStatus() {
 	return L.resolveDefault(callServiceList('meow'), {}).then(function(res) {
 		try {
-			return res['meow']['instances']['meow']['running'] === true;
+			var instances = res['meow']['instances'];
+
+for (var k in instances) {
+    if (instances[k].running === true)
+        return true;
+}
+
+return false;
 		} catch (e) {
 			return false;
 		}
