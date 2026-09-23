@@ -25,7 +25,7 @@ var callSystemLog = rpc.declare({
 var serviceTag = 'meow';
 
 /* syslog is a ring buffer shared by ALL services; read a large window */
-var LOG_READ_LINES = 1000;
+var LOG_READ_LINES = 500;
 
 return view.extend({
 	render: function () {
@@ -255,11 +255,12 @@ return view.extend({
 							meowLines.push(data);
 					}
 
-					/* keep syslog order: oldest first, newest at bottom */
+					/* Show newest syslog entries first, newest at top. */
+					meowLines.reverse();
 
-					var formattedLines = meowLines.map(function (line) {
-						return formatLogLine(line);
-					});
+                    var formattedLines = meowLines.map(function (line) {
+                        return formatLogLine(line);
+                    });
 
 					var formattedContent = formattedLines.join('');
 					originalLogContent = formattedContent;
