@@ -69,17 +69,21 @@ wait_tproxy() {
 }
 
 apply_gateway_rules() {
+    local tport
+
     config_load meow
     config_get_bool gateway main gateway 0
     [ "$gateway" = "1" ] || return 0
+
+    config_get tport main tproxy_port 7893
 
     render_nft || {
         logger -t meow "apply_gateway_rules: render_nft failed"
         return 1
     }
 
-    wait_tproxy "$(config_get main tproxy_port 7893)" || {
-        logger -t meow "tproxy :$port not listening after 30s; gateway rules NOT applied"
+    wait_tproxy "$tport" || {
+        logger -t meow "tproxy :$tport not listening after 30s; gateway rules NOT applied"
         return 1
     }
 
