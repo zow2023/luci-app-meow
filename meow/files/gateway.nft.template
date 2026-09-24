@@ -33,6 +33,7 @@ table inet meow_gateway {
         ip  daddr @reserved4 return
         ip6 daddr @reserved6 return
 
+        meta nfproto ipv6 return
         # Remaining TCP -> tproxy listener
         meta l4proto tcp redirect to :@TPORT@
     }
