@@ -33,6 +33,10 @@ table inet meow_gateway {
         ip  daddr @reserved4 return
         ip6 daddr @reserved6 return
 
+        # meow is configured IPv4-only (ipv6: false): never redirect forwarded
+        # IPv6 to the v4 listener, or all IPv6 traffic is blackholed.
+        meta nfproto ipv6 return
+
         # Remaining TCP -> tproxy listener
         meta l4proto tcp redirect to :@TPORT@
     }
