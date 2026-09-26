@@ -7,39 +7,28 @@ mixed-port: 7890
 allow-lan: true
 bind-address: "0.0.0.0"
 
+# Transparent gateway. The port MUST match `tproxy_port` in /etc/config/meow,
+# otherwise the nft rules redirect LAN traffic to a port nobody listens on.
+tproxy-port: 7893
+routing-mark: 9527
+
 mode: rule
 log-level: info
 ipv6: false
 
-# REST API + built-in web panel (served at /ui). Bound to 0.0.0.0 so the
-# LuCI app can embed the panel for browsers on the LAN; OpenWrt's default
-# firewall still blocks WAN-side access. The port must match `panel_port`
-# in /etc/config/meow. Set a secret if untrusted hosts share the LAN.
+# REST API + built-in web panel (served at /ui). The port must match
+# `panel_port` in /etc/config/meow.
 external-controller: 0.0.0.0:9090
 secret: ""
 
 dns:
   enable: true
-  # dnsmasq owns :53; meow's resolver listens on 1053.
-  listen: 127.0.0.1:1053
+  # Must bind 0.0.0.0 (not 127.0.0.1): the nft rules DNAT LAN :53 queries
+  # to the router's LAN address on this port.
+  listen: 0.0.0.0:1053
   nameserver:
     - 8.8.8.8
     - 1.1.1.1
-
-# Add your proxies and groups here, e.g.:
-# proxies:
-#   - name: "ss-example"
-#     type: ss
-#     server: 1.2.3.4
-#     port: 8388
-#     cipher: aes-256-gcm
-#     password: "your-password"
-#     udp: true
-#
-# proxy-groups:
-#   - name: "PROXY"
-#     type: select
-#     proxies: ["ss-example", "DIRECT"]
 
 rules:
   - MATCH,DIRECT
