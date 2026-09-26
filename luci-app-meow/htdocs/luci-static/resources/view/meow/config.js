@@ -11,8 +11,7 @@
 var callFileWrite = rpc.declare({
 	object: 'file',
 	method: 'write',
-	params: [ 'path', 'data' ],
-	expect: { result: false }
+	params: [ 'path', 'data' ]
 });
 
 var configFile = '/etc/meow/config.yaml';
@@ -30,7 +29,10 @@ return view.extend({
 
 		if (this.editorInstance) {
 			var model = this.editorInstance.getModel();
-			var markers = monaco.editor.getModelMarkers({ owner: 'meow-validator', resource: model.uri });
+			var markers = monaco.editor.getModelMarkers({
+				owner: 'meow-validator',
+				resource: model.uri
+			});
 
 			if (markers && markers.length > 0) {
 				var errorMessages = markers.map(function (marker) {
@@ -49,18 +51,30 @@ return view.extend({
 
 		return callFileWrite(configFile, value)
 			.then(function () {
-				return L.resolveDefault(fs.exec_direct('/bin/chmod', [ '0600', configFile ]), null);
-			}).then(function () {
-				return fs.exec_direct('/etc/init.d/meow', [ 'status' ])
-					.then(function (res) {
-						if (res && res.code !== 0) {
-							return L.resolveDefault(fs.exec_direct('/etc/init.d/meow', [ 'restart' ]), null);
-						} else {
-							return L.resolveDefault(fs.exec_direct('/etc/init.d/meow', [ 'reload' ]), null);
-						}
+				return L.resolveDefault(
+					fs.exec_direct('/bin/chmod', [ '0600', configFile ]),
+					null
+				);
+			})
+			.then(function () {
+				/*
+				 * fs.exec_direct resolves with stdout and rejects
+				 * on non-zero exit code.
+				 *
+				 * It does not return an object containing `code`.
+				 * Reload first, restart only when reload fails.
+				 */
+				return fs.exec_direct('/etc/init.d/meow', [ 'reload' ])
+					.catch(function () {
+						return fs.exec_direct('/etc/init.d/meow', [ 'restart' ]);
 					});
-			}).catch(function (e) {
-				ui.addNotification(null, E('p', _('Failed to save configuration: %s').format(e.message)));
+			})
+			.catch(function (e) {
+				ui.addNotification(
+					null,
+					E('p', _('Failed to save configuration: %s').format(e.message))
+				);
+
 				return Promise.reject(e);
 			});
 	},
@@ -69,7 +83,8 @@ return view.extend({
 		return fs.read_direct(configFile, 'text')
 			.then(function (content) {
 				return content ?? '';
-			}).catch(function (e) {
+			})
+			.catch(function (e) {
 				ui.addNotification(null, E('p', e.message));
 				return '';
 			});
@@ -105,6 +120,7 @@ return view.extend({
 		`);
 
 		var editorDiv = E('div', { id: 'code_editor' });
+
 		var hiddenInput = E('input', {
 			type: 'hidden',
 			id: 'cbid_meow_config__configuration',
@@ -112,8 +128,11 @@ return view.extend({
 			value: content
 		});
 
-		m = new form.Map('meow', _('Configuration'),
-			_('Here you can edit the meow YAML configuration. It will be automatically validated and the service reloaded after apply.'));
+		m = new form.Map(
+			'meow',
+			_('Configuration'),
+			_('Here you can edit the meow YAML configuration. It will be automatically validated and the service reloaded after apply.')
+		);
 
 		m.onValidate = function (map, data) {
 			self.formvalue = data;
@@ -137,17 +156,20 @@ return view.extend({
 		var formEl = m.render();
 
 		window.setTimeout(function () {
-			/* Monaco 不可用时降级为普通 textarea */
+
 			function buildFallbackTextarea(initialValue) {
 				var ta = E('textarea', {
 					id: 'fallback_editor',
 					'style': 'height:500px;width:100%'
 				});
+
 				ta.value = initialValue;
+
 				ta.addEventListener('input', function () {
 					hiddenInput.value = ta.value;
 					self.formvalue.cbid_meow_config__configuration = ta.value;
 				});
+
 				editorDiv.parentNode.replaceChild(ta, editorDiv);
 			}
 
@@ -172,19 +194,23 @@ return view.extend({
 				});
 
 				require([ 'vs/editor/editor.main' ], function () {
-					var prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+					var prefersDarkMode =
+						window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-					self.editorInstance = monaco.editor.create(document.getElementById('code_editor'), {
-						value: content,
-						language: 'yaml',
-						theme: prefersDarkMode ? 'vs-dark' : 'vs',
-						automaticLayout: true,
-						minimap: { enabled: false },
-						scrollBeyondLastLine: false,
-						lineNumbers: 'on',
-						tabSize: 2,
-						wordWrap: 'on'
-					});
+					self.editorInstance = monaco.editor.create(
+						document.getElementById('code_editor'),
+						{
+							value: content,
+							language: 'yaml',
+							theme: prefersDarkMode ? 'vs-dark' : 'vs',
+							automaticLayout: true,
+							minimap: { enabled: false },
+							scrollBeyondLastLine: false,
+							lineNumbers: 'on',
+							tabSize: 2,
+							wordWrap: 'on'
+						}
+					);
 
 					var validateTimer = null;
 
@@ -194,7 +220,11 @@ return view.extend({
 						var lines = value.split('\n');
 						var markers = [];
 
-						monaco.editor.setModelMarkers(model, 'meow-validator', []);
+						monaco.editor.setModelMarkers(
+							model,
+							'meow-validator',
+							[]
+						);
 
 						var bracketStack = [];
 						var unmatchedBrackets = [];
@@ -203,7 +233,6 @@ return view.extend({
 							var line = lines[i];
 							var trimmed = line.trim();
 
-							/* YAML 不允许用 Tab 缩进 */
 							if (/^\t/.test(line)) {
 								markers.push({
 									severity: monaco.MarkerSeverity.Error,
@@ -215,7 +244,11 @@ return view.extend({
 								});
 							}
 
-							if (trimmed.startsWith('#') || trimmed.startsWith('//') || trimmed === '') {
+							if (
+								trimmed.startsWith('#') ||
+								trimmed.startsWith('//') ||
+								trimmed === ''
+							) {
 								continue;
 							}
 
@@ -223,15 +256,29 @@ return view.extend({
 								var ch = line[j];
 
 								if (ch === '{' || ch === '[' || ch === '(') {
-									bracketStack.push({ line: i + 1, char: ch, pos: j });
+									bracketStack.push({
+										line: i + 1,
+										char: ch,
+										pos: j
+									});
 								} else if (ch === '}' || ch === ']' || ch === ')') {
-									var openChar = { '}': '{', ']': '[', ')': '(' }[ch];
+									var openChar = {
+										'}': '{',
+										']': '[',
+										')': '('
+									}[ch];
 
-									if (bracketStack.length > 0 &&
-									    bracketStack[bracketStack.length - 1].char === openChar) {
+									if (
+										bracketStack.length > 0 &&
+										bracketStack[bracketStack.length - 1].char === openChar
+									) {
 										bracketStack.pop();
 									} else {
-										unmatchedBrackets.push({ line: i + 1, pos: j, type: 'closing' });
+										unmatchedBrackets.push({
+											line: i + 1,
+											pos: j,
+											type: 'closing'
+										});
 									}
 								}
 							}
@@ -259,25 +306,42 @@ return view.extend({
 							});
 						});
 
-						monaco.editor.setModelMarkers(model, 'meow-validator', markers);
+						monaco.editor.setModelMarkers(
+							model,
+							'meow-validator',
+							markers
+						);
 					}
 
 					self.editorInstance.onDidChangeModelContent(function () {
 						var value = self.editorInstance.getValue();
+
 						hiddenInput.value = value;
-						document.getElementById('cbid_meow_config__configuration').value = value;
+
+						document.getElementById(
+							'cbid_meow_config__configuration'
+						).value = value;
+
 						self.formvalue.cbid_meow_config__configuration = value;
 
 						if (validateTimer) {
 							clearTimeout(validateTimer);
 						}
-						validateTimer = setTimeout(validateYamlConfig, 500);
+
+						validateTimer = setTimeout(
+							validateYamlConfig,
+							500
+						);
 					});
 
 					setTimeout(validateYamlConfig, 1000);
 
-					window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
-						monaco.editor.setTheme(e.matches ? 'vs-dark' : 'vs');
+					window.matchMedia(
+						'(prefers-color-scheme: dark)'
+					).addEventListener('change', function (e) {
+						monaco.editor.setTheme(
+							e.matches ? 'vs-dark' : 'vs'
+						);
 					});
 
 					window.addEventListener('resize', function () {
