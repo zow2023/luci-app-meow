@@ -57,15 +57,14 @@ render_nft() {
 	logger -t meow "nft generated"
 }
 
-wait_tproxy() {
-	local port="$1"
-	local i=0
+wait_listener() {
+	local port="$1" i=0
 
-	# 以 procd 中的实例状态为准：netstat 在部分固件上不存在，
-	# 且 busybox 输出格式不统一，端口嗅探很容易误判。
+	# 以“端口已 LISTEN”为准（文档 wait-tproxy.sh 的语义）：
+	# 进程 running 不等于监听已 bind。优先 ss，回退 busybox netstat。
 	while [ $i -lt 30 ]; do
-		ubus call service list '{"name":"meow"}' 2>/dev/null |
-			grep -q '"running": *true' && return 0
+		{ ss -lnt 2>/dev/null || netstat -lnt 2>/dev/null; } |
+			grep -q ":$port " && return 0
 
 		sleep 1
 		i=$((i+1))
@@ -86,15 +85,22 @@ apply_gateway_rules() {
 		return 0
 	fi
 
+	# 服务没在跑时绝不装规则 —— 这是“关掉 meow 后整网断”的根源
+	if ! service_running; then
+		logger -t meow "meow not running; gateway rules NOT applied"
+		remove_gateway_rules
+		return 1
+	fi
+
 	config_get tport main tproxy_port 7893
 
 	render_nft || return 1
 
-	# 接收流量的进程没就绪时坚决不上规则，否则 LAN 流量会被黑洞
-	if ! wait_tproxy "$tport"; then
-		logger -t meow "tproxy not ready on port $tport; nft rules NOT applied"
-		remove_gateway_rules
-		return 1
+	# 超时后仍加载规则（fail-closed，宁可挡住也不放行泄漏），
+	# 与文档 wait-tproxy.sh 的“proceed regardless”一致；
+	# 与旧实现的区别是：上面已确认服务确实在运行。
+	if ! wait_listener "$tport"; then
+		logger -t meow "listener :$tport not up after 30s; loading rules anyway (fail-closed)"
 	fi
 
 	nft -f "$NFT_RULES"
