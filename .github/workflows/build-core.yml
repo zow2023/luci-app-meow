@@ -40,23 +40,27 @@ jobs:
           test -n "$sha"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      - name: Clone upstream main history and checkout exact commit
+      - name: Download exact upstream commit
         working-directory: ${{ runner.temp }}
         shell: bash
         run: |
           set -euo pipefail
 
-          rm -rf upstream
+          rm -rf upstream upstream.tar.gz
+          sha="${{ steps.upstream.outputs.sha }}"
 
-          # Do not fetch the SHA as if it were a remote ref. GitHub may not
-          # advertise arbitrary commit IDs for direct fetch even when the
-          # commit exists in main. Clone the main branch history, then detach
-          # at the exact pinned commit from UPSTREAM.json.
-          git clone --no-tags --single-branch --branch main             "$UPSTREAM_REPOSITORY"             upstream
+          # Download the source archive for the exact pinned commit.
+          # This avoids cloning the whole Rust repository or treating a
+          # commit SHA as a remote branch/tag.
+          curl -fL --retry 5 --retry-delay 2 \
+            "$UPSTREAM_REPOSITORY/archive/$sha.tar.gz" \
+            -o upstream.tar.gz
 
-          test "$(git -C upstream rev-parse --verify "${{ steps.upstream.outputs.sha }}^{commit}")"             = "${{ steps.upstream.outputs.sha }}"
+          mkdir -p upstream
+          tar -xzf upstream.tar.gz --strip-components=1 -C upstream
 
-          git -C upstream checkout --detach "${{ steps.upstream.outputs.sha }}"
+          test -s upstream/Cargo.toml
+          test -s upstream/rust-toolchain.toml
 
       - name: Read upstream Rust toolchain
         id: toolchain
