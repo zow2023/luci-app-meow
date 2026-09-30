@@ -1,0 +1,103 @@
+name: Build core and update prebuilt-meow
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '37 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-core-aarch64
+  cancel-in-progress: true
+
+env:
+  UPSTREAM_REPOSITORY: https://github.com/meow-rs/meow-rs.git
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout packaging repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Read pinned upstream SHA
+        id: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha=$(python3 - <<'PY'
+          import json
+          with open("UPSTREAM.json", "r", encoding="utf-8") as f:
+              print(json.load(f)["commit"])
+          PY
+          )
+          test -n "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Clone exact upstream commit
+        working-directory: ${{ runner.temp }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-tags "$UPSTREAM_REPOSITORY" upstream
+          git -C upstream fetch --depth 1 origin "${{ steps.upstream.outputs.sha }}"
+          git -C upstream checkout --detach "${{ steps.upstream.outputs.sha }}"
+
+      - name: Read upstream Rust toolchain
+        id: toolchain
+        working-directory: ${{ runner.temp }}/upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          tc=$(sed -nE 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' rust-toolchain.toml | head -n1)
+          test -n "$tc"
+          echo "channel=$tc" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust target
+        working-directory: ${{ runner.temp }}/upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install "${{ steps.toolchain.outputs.channel }}" --profile minimal --no-self-update
+          rustup target add --toolchain "${{ steps.toolchain.outputs.channel }}" aarch64-unknown-linux-musl
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.13.0
+
+      - name: Build aarch64 static musl binary
+        working-directory: ${{ runner.temp }}/upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +"${{ steps.toolchain.outputs.channel }}" install --locked cargo-zigbuild
+          cargo +"${{ steps.toolchain.outputs.channel }}" zigbuild \
+            --release --locked \
+            --target aarch64-unknown-linux-musl \
+            --bin meow
+          test -s target/aarch64-unknown-linux-musl/release/meow
+          file target/aarch64-unknown-linux-musl/release/meow
+          mkdir -p "$GITHUB_WORKSPACE/meow"
+          cp target/aarch64-unknown-linux-musl/release/meow "$GITHUB_WORKSPACE/meow/prebuilt-meow"
+          chmod 0755 "$GITHUB_WORKSPACE/meow/prebuilt-meow"
+
+      - name: Commit updated binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add meow/prebuilt-meow
+          if git diff --cached --quiet; then
+            echo "prebuilt-meow is unchanged"
+            exit 0
+          fi
+          git commit -m "chore(build): update prebuilt-meow [skip ci]"
+          git push origin HEAD:main
