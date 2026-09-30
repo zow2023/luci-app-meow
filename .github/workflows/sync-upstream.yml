@@ -1,0 +1,135 @@
+name: Sync upstream openwrt tree
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Upstream branch, tag, or commit to sync"
+        required: false
+        default: "main"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: true
+
+env:
+  UPSTREAM_REPOSITORY: https://github.com/meow-rs/meow-rs
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout packaging repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Resolve upstream commit
+        id: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref="${{ inputs.ref }}"
+          api="https://api.github.com/repos/meow-rs/meow-rs/commits/$ref"
+
+          curl -fL --retry 5 --retry-delay 2             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "$api"             -o upstream-commit.json
+
+          python3 - <<'PY'
+          import json
+          d = json.load(open("upstream-commit.json", encoding="utf-8"))
+          sha = d["sha"]
+          commit = d["commit"]
+          print(f"sha={sha}")
+          print(f"message={commit['message'].splitlines()[0]}")
+          print(f"author_date={commit['author']['date']}")
+          print(f"commit_date={commit['committer']['date']}")
+          with open("upstream.env", "w", encoding="utf-8") as f:
+              f.write(f"sha={sha}\n")
+              f.write(f"subject={commit['message'].splitlines()[0]}\n")
+              f.write(f"source_commit_time={commit['committer']['date']}\n")
+          PY
+
+          cat upstream.env >> "$GITHUB_OUTPUT"
+
+      - name: Download exact upstream source
+        working-directory: ${{ runner.temp }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="${{ steps.upstream.outputs.sha }}"
+          rm -rf upstream upstream.tar.gz
+
+          curl -fL --retry 5 --retry-delay 2             "https://codeload.github.com/meow-rs/meow-rs/tar.gz/$sha"             -o upstream.tar.gz
+
+          mkdir -p upstream
+          tar -xzf upstream.tar.gz --strip-components=1 -C upstream
+
+          test -d upstream/openwrt/meow/files
+          test -d upstream/openwrt/luci-app-meow/htdocs
+          test -d upstream/openwrt/luci-app-meow/root
+
+      - name: Sync bundled OpenWrt and LuCI files
+        working-directory: ${{ runner.temp }}/upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf "$GITHUB_WORKSPACE/meow/files"
+          rm -rf "$GITHUB_WORKSPACE/luci-app-meow/htdocs"
+          rm -rf "$GITHUB_WORKSPACE/luci-app-meow/root"
+
+          mkdir -p "$GITHUB_WORKSPACE/meow"
+          mkdir -p "$GITHUB_WORKSPACE/luci-app-meow"
+
+          cp -a openwrt/meow/files "$GITHUB_WORKSPACE/meow/files"
+          cp -a openwrt/luci-app-meow/htdocs "$GITHUB_WORKSPACE/luci-app-meow/htdocs"
+          cp -a openwrt/luci-app-meow/root "$GITHUB_WORKSPACE/luci-app-meow/root"
+
+      - name: Update UPSTREAM.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from datetime import datetime, timezone
+
+          with open("UPSTREAM.json", "r", encoding="utf-8") as f:
+              d = json.load(f)
+
+          sha = "${{ steps.upstream.outputs.sha }}"
+          subject = "${{ steps.upstream.outputs.subject }}"
+
+          d["repository"] = "https://github.com/meow-rs/meow-rs.git"
+          d["path"] = "openwrt/"
+          d["branch"] = "${{ inputs.ref }}"
+          d["commit"] = sha
+          d["commit_short"] = sha[:7]
+          d["synced_at_utc"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+          d["source_commit_time"] = "${{ steps.upstream.outputs.source_commit_time }}"
+          d["subject"] = subject
+
+          with open("UPSTREAM.json", "w", encoding="utf-8") as f:
+              json.dump(d, f, ensure_ascii=False, indent=2)
+              f.write("\n")
+          PY
+
+      - name: Commit synchronized upstream tree
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add             UPSTREAM.json             meow/files             luci-app-meow/htdocs             luci-app-meow/root
+
+          if git diff --cached --quiet; then
+            echo "Upstream content is already synchronized"
+            exit 0
+          fi
+
+          git commit -m "chore(sync): update upstream openwrt tree to ${{ steps.upstream.outputs.sha }}"
+          git push origin HEAD:main
