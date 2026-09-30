@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  UPSTREAM_REPOSITORY: https://github.com/meow-rs/meow-rs.git
+  UPSTREAM_REPOSITORY: https://github.com/meow-rs/meow-rs
 
 jobs:
   build:
@@ -53,7 +53,7 @@ jobs:
           # This avoids cloning the whole Rust repository or treating a
           # commit SHA as a remote branch/tag.
           curl -fL --retry 5 --retry-delay 2 \
-            "$UPSTREAM_REPOSITORY/archive/$sha.tar.gz" \
+            "https://codeload.github.com/meow-rs/meow-rs/tar.gz/$sha" \
             -o upstream.tar.gz
 
           mkdir -p upstream
