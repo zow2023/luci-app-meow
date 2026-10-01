@@ -2,9 +2,9 @@
   "repository": "https://github.com/meow-rs/meow-rs.git",
   "path": "openwrt/",
   "branch": "main",
-  "commit": "8e464a26ae94e73771201f81d707876bc72aae3",
-  "commit_short": "8e464a2",
-  "synced_at_utc": "2026-09-30T01:35:35Z",
-  "source_commit_time": "2026-09-30T01:35:35Z",
-  "subject": "feat(proxy): run SOCKS5 UDP ASSOCIATE through dialer-proxy chains (#656)"
+  "commit": "57672c5c1bb7a31c032264b761c7fe7e7fd299c4",
+  "commit_short": "57672c5",
+  "synced_at_utc": "2026-10-01T04:52:16Z",
+  "source_commit_time": "2026-10-01T04:30:04Z",
+  "subject": "fix(proxy): send the SS request header for server-first protocols (#703)"
 }
