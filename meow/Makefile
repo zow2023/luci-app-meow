@@ -2,15 +2,15 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=meow
 
-# Upstream release baseline. Bump this by hand when meow-rs tags a new release
-# (https://github.com/meow-rs/meow-rs/releases).
+# Upstream release baseline. Bump by hand when meow-rs tags a new release.
 PKG_BASE_VERSION?=0.21.2
 
 # PKG_VERSION is rewritten automatically by
 # .github/workflows/sync-upstream.yml from the pinned upstream commit's
 # committer time (UTC, %Y%m%d%H%M). Do not edit this line by hand.
-# Keeping the stamp as a plain numeric 4th segment keeps the final
-# "<maj>.<min>.<fix>.<sub>-<rel>" form valid for both opkg and apk.
+# All-numeric dotted segments keep the version valid for both package
+# managers:  apk -> meow-0.21.2.202610010430-r1.apk
+#            ipk -> meow_0.21.2.202610010430-1_<arch>.ipk
 PKG_VERSION?=$(PKG_BASE_VERSION).202610010430
 PKG_RELEASE?=1
 
@@ -24,21 +24,25 @@ define Package/meow
   TITLE:=meow high-performance rule-based proxy core
   URL:=https://github.com/meow-rs/meow-rs
   LICENSE:=MIT
-  # The default transparent-proxy mode (nftables nat REDIRECT + kernel TPROXY
-  # for forwarded LAN traffic, see upstream docs/openwrt.md) needs these two
-  # kernel modules. Drop this line if your targets use fw3/iptables only.
+  # Required by the default transparent-proxy mode implemented in
+  # files/gateway.sh (nftables "socket transparent" + tproxy for UDP).
+  # Both packages exist for OpenWrt 25.12 (openwrt-25.12 netfilter.mk);
+  # they are published per target under targets/<t>/<s>/kmods/<kver>/.
+  # If you need the package to install on a target whose kmods feed is
+  # stale or mismatched, drop this line - gateway.sh already probes for
+  # the modules at runtime and logs a hint instead of leaking traffic.
   DEPENDS:=+kmod-nft-socket +kmod-nft-tproxy
 endef
 
 define Package/meow/description
   meow Rust proxy core built from the upstream commit recorded in UPSTREAM.json.
 
-  /usr/bin/meow plus the procd init script, UCI settings and the default
-  config at /etc/meow/config.yaml (mixed HTTP/SOCKS5 proxy on :7890,
-  REST API + web panel on :9090, rule mode with MATCH,DIRECT).
+  /usr/bin/meow, the procd init script, UCI settings and the default config
+  at /etc/meow/config.yaml (mixed HTTP/SOCKS5 proxy on :7890, REST API and
+  web panel on :9090, rule mode with MATCH,DIRECT).
 
-  The transparent-proxy / side-router mode needs kmod-nft-socket and
-  kmod-nft-tproxy; they are pulled in as dependencies.
+  Transparent-proxy / gateway mode additionally needs kmod-nft-socket and
+  kmod-nft-tproxy (pulled in as dependencies).
 endef
 
 define Build/Prepare
