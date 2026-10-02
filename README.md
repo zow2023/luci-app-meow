@@ -27,7 +27,6 @@
 
 - Repository: `https://github.com/meow-rs/meow-rs.git`
 - Path: `openwrt/`
-- Commit: `8e464a26ae94e73771201f81d707876bc72aae3`
 
 `meow/files/` 与 LuCI `root/` 保持上游目录布局；LuCI 静态目录按独立包形式固化。
 
@@ -42,8 +41,7 @@
 3. `ref` 默认填写 `main`，表示同步上游最新提交；也可以填写 branch、tag 或 commit SHA。
 4. workflow 会更新 `UPSTREAM.json`，同步上游 `openwrt/meow/files/`、`openwrt/luci-app-meow/htdocs/` 和 `openwrt/luci-app-meow/root/`。
 5. 同步提交推送到本仓库 `main` 后，`build-core.yml` 会自动重新构建对应版本的 `meow/prebuilt-meow`。
-
-同步不会覆盖本仓库自己的 `meow/Makefile`、`meow/prebuilt-meow` 和 `luci-app-meow/Makefile`。
+6. 只重写版本行
 
 ## Core build
 
