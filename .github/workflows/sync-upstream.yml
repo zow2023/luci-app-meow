@@ -7,7 +7,7 @@ on:
         description: "Upstream branch, tag, or commit to sync"
         required: false
         default: "main"
-  # Optional: keep tracking upstream without a manual click. Uncomment to enable.
+  # Optional: keep tracking upstream without a manual click.
   # schedule:
   #   - cron: '17 3 * * *'
 
@@ -28,8 +28,6 @@ jobs:
       - name: Checkout packaging repository
         uses: actions/checkout@v5
         with:
-          # fetch-depth 2 so the bot commit that rewrites the Makefiles has
-          # full context; the version stamp itself only reads working files.
           fetch-depth: 2
 
       - name: Resolve upstream commit
@@ -65,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 2026-10-01T04:30:04Z -> 202610010430   (UTC, minute resolution)
+          # 2026-10-01T04:30:04Z -> 202610010430  (UTC, minute resolution)
           stamp="$(printf '%s' "${{ steps.upstream.outputs.source_commit_time }}" \
             | tr -cd '0-9' | cut -c1-12)"
           test -n "$stamp"
@@ -73,15 +71,15 @@ jobs:
           old_suffix="$(sed -nE 's|^PKG_VERSION[?]=.*\.([0-9]{6,})$|\1|p' meow/Makefile | head -n1)"
           old_rel="$(sed -nE 's|^PKG_RELEASE[?]=([0-9]+).*|\1|p'       meow/Makefile | head -n1)"
 
-          # Same upstream commit re-synced => bump PKG_RELEASE, otherwise reset to 1.
+          # Same upstream commit re-synced -> bump PKG_RELEASE, else reset to 1.
           if [ "$old_suffix" = "$stamp" ]; then
             rel=$(( ${old_rel:-1} + 1 ))
           else
             rel=1
           fi
 
-          # Literal $(PKG_BASE_VERSION) plus the numeric stamp keeps the final
-          # version "<maj>.<min>.<fix>.<sub>-<rel>" valid for opkg and apk.
+          # Literal $(PKG_BASE_VERSION) + numeric stamp -> "<maj>.<min>.<fix>.<sub>"
+          # followed by "-r<rel>", which is valid for apk and ipk alike.
           new_ver='$(PKG_BASE_VERSION).'"$stamp"
 
           for f in meow/Makefile luci-app-meow/Makefile; do
@@ -163,8 +161,7 @@ jobs:
           d["synced_at_utc"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
           d["source_commit_time"] = "${{ steps.upstream.outputs.source_commit_time }}"
           d["subject"] = subject
-          d["pkg_base_version"] = "${{ steps.upstream.outputs.pkg_version }}".rsplit(".", 1)[0]
-          d["pkg_version"] = "${{ steps.upstream.outputs.pkg_version }}"
+          d["pkg_version"] = "${{ steps.pkgver.outputs.pkg_version }}"
           d["pkg_version_stamp"] = "${{ steps.pkgver.outputs.stamp }}"
           d["pkg_release"] = int("${{ steps.pkgver.outputs.release }}")
 
