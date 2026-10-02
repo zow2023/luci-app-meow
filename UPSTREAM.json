@@ -2,9 +2,12 @@
   "repository": "https://github.com/meow-rs/meow-rs.git",
   "path": "openwrt/",
   "branch": "main",
-  "commit": "57672c5c1bb7a31c032264b761c7fe7e7fd299c4",
-  "commit_short": "57672c5",
-  "synced_at_utc": "2026-10-01T04:52:16Z",
-  "source_commit_time": "2026-10-01T04:30:04Z",
-  "subject": "fix(proxy): send the SS request header for server-first protocols (#703)"
+  "commit": "ad147e10eb7c097b72d23f7e141ced8b3de154be",
+  "commit_short": "ad147e1",
+  "synced_at_utc": "2026-10-02T05:12:18Z",
+  "source_commit_time": "2026-10-01T08:07:16Z",
+  "subject": "fix(proxy): fold bracketed IPv6 literals everywhere a host string is dialed (#701) (#707)",
+  "pkg_version": "0.21.2.202610010807",
+  "pkg_version_stamp": "202610010807",
+  "pkg_release": 1
 }
