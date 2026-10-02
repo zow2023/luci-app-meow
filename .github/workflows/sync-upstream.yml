@@ -7,6 +7,9 @@ on:
         description: "Upstream branch, tag, or commit to sync"
         required: false
         default: "main"
+  # Optional: keep tracking upstream without a manual click. Uncomment to enable.
+  # schedule:
+  #   - cron: '17 3 * * *'
 
 permissions:
   contents: write
@@ -25,7 +28,9 @@ jobs:
       - name: Checkout packaging repository
         uses: actions/checkout@v5
         with:
-          fetch-depth: 1
+          # fetch-depth 2 so the bot commit that rewrites the Makefiles has
+          # full context; the version stamp itself only reads working files.
+          fetch-depth: 2
 
       - name: Resolve upstream commit
         id: upstream
@@ -53,6 +58,54 @@ jobs:
           PY
 
           cat upstream.env >> "$GITHUB_OUTPUT"
+
+      - name: Stamp package version from upstream commit time
+        id: pkgver
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # 2026-10-01T04:30:04Z -> 202610010430   (UTC, minute resolution)
+          stamp="$(printf '%s' "${{ steps.upstream.outputs.source_commit_time }}" \
+            | tr -cd '0-9' | cut -c1-12)"
+          test -n "$stamp"
+
+          old_suffix="$(sed -nE 's|^PKG_VERSION[?]=.*\.([0-9]{6,})$|\1|p' meow/Makefile | head -n1)"
+          old_rel="$(sed -nE 's|^PKG_RELEASE[?]=([0-9]+).*|\1|p'       meow/Makefile | head -n1)"
+
+          # Same upstream commit re-synced => bump PKG_RELEASE, otherwise reset to 1.
+          if [ "$old_suffix" = "$stamp" ]; then
+            rel=$(( ${old_rel:-1} + 1 ))
+          else
+            rel=1
+          fi
+
+          # Literal $(PKG_BASE_VERSION) plus the numeric stamp keeps the final
+          # version "<maj>.<min>.<fix>.<sub>-<rel>" valid for opkg and apk.
+          new_ver='$(PKG_BASE_VERSION).'"$stamp"
+
+          for f in meow/Makefile luci-app-meow/Makefile; do
+            # Bootstrap PKG_BASE_VERSION from a legacy literal PKG_VERSION.
+            if ! grep -qE '^PKG_BASE_VERSION[?]=' "$f"; then
+              base="$(sed -nE 's|^PKG_VERSION[?]=([0-9]+(\.[0-9]+)+).*|\1|p' "$f" | head -n1)"
+              test -n "$base" || base=0.0.0
+              sed -i -E "s|^PKG_NAME:=.*|&\nPKG_BASE_VERSION?=${base}|" "$f"
+            fi
+
+            sed -i -E "s|^PKG_VERSION[?]=.*|PKG_VERSION?=${new_ver}|" "$f"
+            sed -i -E "s|^PKG_RELEASE[?]=.*|PKG_RELEASE?=${rel}|" "$f"
+
+            grep -qF "PKG_VERSION?=${new_ver}" "$f"
+            grep -qF "PKG_RELEASE?=${rel}" "$f"
+          done
+
+          base_ver="$(sed -nE 's|^PKG_BASE_VERSION[?]=(.*)$|\1|p' meow/Makefile | head -n1)"
+
+          echo "stamp=${stamp}" >> "$GITHUB_OUTPUT"
+          echo "release=${rel}" >> "$GITHUB_OUTPUT"
+          echo "pkg_version=${base_ver}.${stamp}" >> "$GITHUB_OUTPUT"
+
+          grep -H -E '^PKG_(BASE_VERSION|VERSION|RELEASE)' meow/Makefile luci-app-meow/Makefile
 
       - name: Download exact upstream source
         working-directory: ${{ runner.temp }}
@@ -110,6 +163,10 @@ jobs:
           d["synced_at_utc"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
           d["source_commit_time"] = "${{ steps.upstream.outputs.source_commit_time }}"
           d["subject"] = subject
+          d["pkg_base_version"] = "${{ steps.upstream.outputs.pkg_version }}".rsplit(".", 1)[0]
+          d["pkg_version"] = "${{ steps.upstream.outputs.pkg_version }}"
+          d["pkg_version_stamp"] = "${{ steps.pkgver.outputs.stamp }}"
+          d["pkg_release"] = int("${{ steps.pkgver.outputs.release }}")
 
           with open("UPSTREAM.json", "w", encoding="utf-8") as f:
               json.dump(d, f, ensure_ascii=False, indent=2)
@@ -124,12 +181,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add             UPSTREAM.json             meow/files             luci-app-meow/htdocs             luci-app-meow/root
+          git add             UPSTREAM.json             meow/files             luci-app-meow/htdocs             luci-app-meow/root             meow/Makefile             luci-app-meow/Makefile
 
           if git diff --cached --quiet; then
             echo "Upstream content is already synchronized"
             exit 0
           fi
 
-          git commit -m "chore(sync): update upstream openwrt tree to ${{ steps.upstream.outputs.sha }}"
+          git commit -m "chore(sync): upstream openwrt tree -> ${{ steps.upstream.outputs.sha }} (pkg ${{ steps.pkgver.outputs.pkg_version }}-${{ steps.pkgver.outputs.release }})"
           git push origin HEAD:main
