@@ -30,7 +30,7 @@ define Package/luci-app-meow/description
 
   Adds Services -> meow (Overview, Panel, Configuration, Clients, Settings,
   Log). Runtime data comes from the meow REST API through authenticated LuCI
-  RPC; curl is used only against the router's loopback API.
+  RPC; curl is only used against the router's loopback API.
 endef
 
 define Build/Prepare
