@@ -1,0 +1,251 @@
+name: Build core and update prebuilt-meow
+
+on:
+  # Run automatically after the upstream sync workflow completes.
+  workflow_run:
+    workflows:
+      - Sync upstream openwrt tree
+    types:
+      - completed
+    branches:
+      - main
+
+  # Keep manual execution available for rebuilding the currently pinned
+  # upstream commit without running the sync workflow first.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-core-aarch64
+  cancel-in-progress: true
+
+env:
+  UPSTREAM_REPOSITORY: https://github.com/meow-rs/meow-rs
+
+jobs:
+  build:
+    # workflow_run fires for both success and failure of the upstream sync.
+    # Only build when the sync actually completed successfully.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout packaging repository
+        uses: actions/checkout@v5
+        with:
+          # Always build from the current main branch. This is important for
+          # workflow_run: the sync workflow has just pushed the new
+          # UPSTREAM.json / Makefiles to main.
+          ref: main
+          fetch-depth: 2
+
+      - name: Read pinned upstream SHA
+        id: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sha="$(
+            python3 - <<'PY'
+          import json
+
+          with open("UPSTREAM.json", "r", encoding="utf-8") as f:
+              print(json.load(f)["commit"])
+          PY
+          )"
+
+          test -n "$sha"
+
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+          echo "Pinned upstream commit: $sha"
+
+      - name: Download exact upstream source
+        working-directory: ${{ runner.temp }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf upstream upstream.tar.gz
+
+          sha="${{ steps.upstream.outputs.sha }}"
+
+          # Download the exact pinned commit rather than main.
+          # This guarantees that the binary corresponds exactly to
+          # UPSTREAM.json.
+          curl -fL --retry 5 --retry-delay 2 \
+            "https://codeload.github.com/meow-rs/meow-rs/tar.gz/$sha" \
+            -o upstream.tar.gz
+
+          mkdir -p upstream
+
+          tar -xzf upstream.tar.gz \
+            --strip-components=1 \
+            -C upstream
+
+          test -s upstream/Cargo.toml
+          test -s upstream/rust-toolchain.toml
+
+      - name: Verify upstream version
+        id: version
+        working-directory: ${{ runner.temp }}/upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import re
+          import tomllib
+
+          with open("Cargo.toml", "rb") as f:
+              cargo = tomllib.load(f)
+
+          version = cargo["workspace"]["package"]["version"]
+
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+              raise SystemExit(
+                  f"unsupported upstream version: {version!r}"
+              )
+
+          print(f"Upstream version: {version}")
+
+          with open("upstream.version", "w", encoding="utf-8") as f:
+              f.write(version + "\n")
+          PY
+
+          version="$(cat upstream.version)"
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify packaging metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          upstream_version="${{ steps.version.outputs.version }}"
+
+          make_base() {
+            sed -nE \
+              's|^PKG_BASE_VERSION[?]=(.*)$|\1|p' \
+              "$1" \
+              | head -n1
+          }
+
+          meow_base="$(make_base meow/Makefile)"
+          luci_base="$(make_base luci-app-meow/Makefile)"
+
+          echo "Upstream version:       $upstream_version"
+          echo "meow package version:   $meow_base"
+          echo "LuCI package version:   $luci_base"
+
+          test "$meow_base" = "$upstream_version"
+          test "$luci_base" = "$upstream_version"
+
+      - name: Read upstream Rust toolchain
+        id: toolchain
+        working-directory: ${{ runner.temp }}/upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tc="$(
+            sed -nE \
+              's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
+              rust-toolchain.toml \
+              | head -n1
+          )"
+
+          test -n "$tc"
+
+          echo "channel=$tc" >> "$GITHUB_OUTPUT"
+
+          echo "Rust toolchain: $tc"
+
+      - name: Install Rust target
+        working-directory: ${{ runner.temp }}/upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rustup toolchain install \
+            "${{ steps.toolchain.outputs.channel }}" \
+            --profile minimal \
+            --no-self-update
+
+          rustup target add \
+            --toolchain "${{ steps.toolchain.outputs.channel }}" \
+            aarch64-unknown-linux-musl
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.13.0
+
+      - name: Build aarch64 static musl binary
+        working-directory: ${{ runner.temp }}/upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cargo +"${{ steps.toolchain.outputs.channel }}" \
+            install --locked cargo-zigbuild
+
+          cargo +"${{ steps.toolchain.outputs.channel }}" \
+            zigbuild \
+            --release \
+            --locked \
+            --target aarch64-unknown-linux-musl \
+            --bin meow
+
+          test -s \
+            target/aarch64-unknown-linux-musl/release/meow
+
+          file \
+            target/aarch64-unknown-linux-musl/release/meow
+
+          mkdir -p "$GITHUB_WORKSPACE/meow"
+
+          cp \
+            target/aarch64-unknown-linux-musl/release/meow \
+            "$GITHUB_WORKSPACE/meow/prebuilt-meow"
+
+          chmod 0755 \
+            "$GITHUB_WORKSPACE/meow/prebuilt-meow"
+
+      - name: Verify built binary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          binary="$GITHUB_WORKSPACE/meow/prebuilt-meow"
+
+          test -s "$binary"
+          test -x "$binary"
+
+          file "$binary"
+
+      - name: Commit updated binary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add meow/prebuilt-meow
+
+          if git diff --cached --quiet; then
+            echo "prebuilt-meow is unchanged"
+            exit 0
+          fi
+
+          git commit \
+            -m "chore(build): update prebuilt-meow [skip ci]"
+
+          git push origin HEAD:main
