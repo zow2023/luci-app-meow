@@ -1,13 +1,13 @@
 {
   "repository": "https://github.com/meow-rs/meow-rs.git",
   "path": "openwrt/",
-  "branch": "main",
-  "commit": "c4ce5a11d6e70afd1894d03dfe53f63a7a98bbdf",
-  "commit_short": "c4ce5a1",
-  "synced_at_utc": "2026-10-02T16:16:19Z",
-  "source_commit_time": "2026-10-02T11:13:39Z",
-  "subject": "fix(api): #717 review follow-ups — geodata/fakeip path parity + persisted flag docs (#724)",
-  "pkg_version": "0.21.2.202610021113",
-  "pkg_version_stamp": "202610021113",
+  "branch": "v0.22.0",
+  "commit": "4b26a0b5d0cd893e11af71b07e3c6c145c66ce88",
+  "commit_short": "4b26a0b",
+  "synced_at_utc": "2026-10-03T01:32:45Z",
+  "source_commit_time": "2026-10-03T01:04:28Z",
+  "subject": "chore(release): 0.22.0 (#720)",
+  "pkg_version": "0.21.2.202610030104",
+  "pkg_version_stamp": "202610030104",
   "pkg_release": 1
 }
