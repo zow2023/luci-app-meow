@@ -3,7 +3,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=meow
 
 # Upstream release baseline. Bump by hand when meow-rs tags a new release.
-PKG_BASE_VERSION?=0.21.2
+PKG_BASE_VERSION?=0.22.0
 
 # PKG_VERSION is rewritten automatically by
 # .github/workflows/sync-upstream.yml from the pinned upstream commit's
