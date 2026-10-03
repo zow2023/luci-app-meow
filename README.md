@@ -55,13 +55,3 @@
 6. 自动提交回 `main`。
 
 这样 OpenWrt feed 本身不再参与 Rust 编译，也不再下载或拼装整个 upstream `openwrt/` 子树。
-
-## Bootstrap
-
-由于这个附件环境不能直接把 GitHub Release 的 3 MB 二进制资产原样转进附件，`meow/prebuilt-meow` 在上传包中是占位文件。新仓库上传后，`build-core.yml` 会自动生成真实的静态 aarch64/musl `prebuilt-meow` 并提交回仓库。
-
-在二进制生成前，OpenWrt `meow` package 会主动报错，避免把占位文件误装成 `/usr/bin/meow`。
-
-## Note about bundled YAML helper
-
-上游 `htdocs` 中的 `meow_yaml.js` 是由 npm 生成的约百 KB 的压缩 bundle。为了保持这个可上传附件的体积可控，本包保留了同一路径的兼容模块；当前 Configuration 页面直接校验并写入 YAML，不依赖该 AST bundle。
