@@ -7,7 +7,7 @@ PKG_BASE_VERSION?=0.22.0
 
 # Rewritten automatically by .github/workflows/sync-upstream.yml; the LuCI
 # package always carries the same version as the core it drives.
-PKG_VERSION?=$(PKG_BASE_VERSION).202610030104
+PKG_VERSION?=$(PKG_BASE_VERSION).202610030155
 PKG_RELEASE?=1
 
 include $(INCLUDE_DIR)/package.mk

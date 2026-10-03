@@ -1,13 +1,14 @@
 {
   "repository": "https://github.com/meow-rs/meow-rs.git",
   "path": "openwrt/",
-  "branch": "v0.22.0",
-  "commit": "4b26a0b5d0cd893e11af71b07e3c6c145c66ce88",
-  "commit_short": "4b26a0b",
-  "synced_at_utc": "2026-10-03T01:32:45Z",
-  "source_commit_time": "2026-10-03T01:04:28Z",
-  "subject": "chore(release): 0.22.0 (#720)",
-  "pkg_version": "0.21.2.202610030104",
-  "pkg_version_stamp": "202610030104",
-  "pkg_release": 1
+  "branch": "main",
+  "commit": "3c27aca92d64c7194c6b590e529da46465fbb7eb",
+  "commit_short": "3c27aca",
+  "synced_at_utc": "2026-10-03T02:05:57Z",
+  "source_commit_time": "2026-10-03T01:55:37Z",
+  "subject": "fix(app): apply config log-level at startup (#729) (#730)",
+  "pkg_version": "0.22.0.202610030155",
+  "pkg_version_stamp": "202610030155",
+  "pkg_release": 1,
+  "upstream_version": "0.22.0"
 }
