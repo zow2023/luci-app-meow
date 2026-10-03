@@ -24,6 +24,7 @@ env:
 jobs:
   sync:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout packaging repository
         uses: actions/checkout@v5
@@ -35,20 +36,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           ref="${{ inputs.ref }}"
           api="https://api.github.com/repos/meow-rs/meow-rs/commits/$ref"
 
-          curl -fL --retry 5 --retry-delay 2             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "$api"             -o upstream-commit.json
+          curl -fL --retry 5 --retry-delay 2 \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$api" \
+            -o upstream-commit.json
 
           python3 - <<'PY'
           import json
-          d = json.load(open("upstream-commit.json", encoding="utf-8"))
+
+          with open("upstream-commit.json", "r", encoding="utf-8") as f:
+              d = json.load(f)
+
           sha = d["sha"]
           commit = d["commit"]
+
           print(f"sha={sha}")
           print(f"message={commit['message'].splitlines()[0]}")
           print(f"author_date={commit['author']['date']}")
           print(f"commit_date={commit['committer']['date']}")
+
           with open("upstream.env", "w", encoding="utf-8") as f:
               f.write(f"sha={sha}\n")
               f.write(f"subject={commit['message'].splitlines()[0]}\n")
@@ -57,70 +68,168 @@ jobs:
 
           cat upstream.env >> "$GITHUB_OUTPUT"
 
-      - name: Stamp package version from upstream commit time
-        id: pkgver
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          # 2026-10-01T04:30:04Z -> 202610010430  (UTC, minute resolution)
-          stamp="$(printf '%s' "${{ steps.upstream.outputs.source_commit_time }}" \
-            | tr -cd '0-9' | cut -c1-12)"
-          test -n "$stamp"
-
-          old_suffix="$(sed -nE 's|^PKG_VERSION[?]=.*\.([0-9]{6,})$|\1|p' meow/Makefile | head -n1)"
-          old_rel="$(sed -nE 's|^PKG_RELEASE[?]=([0-9]+).*|\1|p'       meow/Makefile | head -n1)"
-
-          # Same upstream commit re-synced -> bump PKG_RELEASE, else reset to 1.
-          if [ "$old_suffix" = "$stamp" ]; then
-            rel=$(( ${old_rel:-1} + 1 ))
-          else
-            rel=1
-          fi
-
-          # Literal $(PKG_BASE_VERSION) + numeric stamp -> "<maj>.<min>.<fix>.<sub>"
-          # followed by "-r<rel>", which is valid for apk and ipk alike.
-          new_ver='$(PKG_BASE_VERSION).'"$stamp"
-
-          for f in meow/Makefile luci-app-meow/Makefile; do
-            # Bootstrap PKG_BASE_VERSION from a legacy literal PKG_VERSION.
-            if ! grep -qE '^PKG_BASE_VERSION[?]=' "$f"; then
-              base="$(sed -nE 's|^PKG_VERSION[?]=([0-9]+(\.[0-9]+)+).*|\1|p' "$f" | head -n1)"
-              test -n "$base" || base=0.0.0
-              sed -i -E "s|^PKG_NAME:=.*|&\nPKG_BASE_VERSION?=${base}|" "$f"
-            fi
-
-            sed -i -E "s|^PKG_VERSION[?]=.*|PKG_VERSION?=${new_ver}|" "$f"
-            sed -i -E "s|^PKG_RELEASE[?]=.*|PKG_RELEASE?=${rel}|" "$f"
-
-            grep -qF "PKG_VERSION?=${new_ver}" "$f"
-            grep -qF "PKG_RELEASE?=${rel}" "$f"
-          done
-
-          base_ver="$(sed -nE 's|^PKG_BASE_VERSION[?]=(.*)$|\1|p' meow/Makefile | head -n1)"
-
-          echo "stamp=${stamp}" >> "$GITHUB_OUTPUT"
-          echo "release=${rel}" >> "$GITHUB_OUTPUT"
-          echo "pkg_version=${base_ver}.${stamp}" >> "$GITHUB_OUTPUT"
-
-          grep -H -E '^PKG_(BASE_VERSION|VERSION|RELEASE)' meow/Makefile luci-app-meow/Makefile
-
       - name: Download exact upstream source
         working-directory: ${{ runner.temp }}
         shell: bash
         run: |
           set -euo pipefail
+
           sha="${{ steps.upstream.outputs.sha }}"
+
           rm -rf upstream upstream.tar.gz
 
-          curl -fL --retry 5 --retry-delay 2             "https://codeload.github.com/meow-rs/meow-rs/tar.gz/$sha"             -o upstream.tar.gz
+          curl -fL --retry 5 --retry-delay 2 \
+            "https://codeload.github.com/meow-rs/meow-rs/tar.gz/$sha" \
+            -o upstream.tar.gz
 
           mkdir -p upstream
-          tar -xzf upstream.tar.gz --strip-components=1 -C upstream
 
+          tar -xzf upstream.tar.gz \
+            --strip-components=1 \
+            -C upstream
+
+          test -s upstream/Cargo.toml
+          test -s upstream/rust-toolchain.toml
           test -d upstream/openwrt/meow/files
           test -d upstream/openwrt/luci-app-meow/htdocs
           test -d upstream/openwrt/luci-app-meow/root
+
+      - name: Read upstream package version
+        id: version
+        working-directory: ${{ runner.temp }}/upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import re
+          import tomllib
+
+          with open("Cargo.toml", "rb") as f:
+              cargo = tomllib.load(f)
+
+          try:
+              version = cargo["workspace"]["package"]["version"]
+          except KeyError as exc:
+              raise SystemExit(
+                  "Cargo.toml is missing [workspace.package].version"
+              ) from exc
+
+          if not isinstance(version, str):
+              raise SystemExit("workspace.package.version is not a string")
+
+          # The OpenWrt package version scheme is:
+          #   <upstream-version>.<UTC commit timestamp>
+          #
+          # Require a normal numeric X.Y.Z base version so that versions stay
+          # compatible with both apk and ipk/opkg ordering.
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+              raise SystemExit(
+                  f"unsupported upstream version '{version}'; "
+                  "expected stable X.Y.Z"
+              )
+
+          print(f"upstream version: {version}")
+          print(f"version={version}")
+
+          with open("upstream-version.env", "w", encoding="utf-8") as f:
+              f.write(f"version={version}\n")
+          PY
+
+          cat upstream-version.env >> "$GITHUB_OUTPUT"
+
+      - name: Stamp package version
+        id: pkgver
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          upstream_version="${{ steps.version.outputs.version }}"
+          source_commit_time="${{ steps.upstream.outputs.source_commit_time }}"
+
+          # 2026-10-03T01:04:28Z -> 202610030104
+          # UTC, minute resolution.
+          stamp="$(
+            printf '%s' "$source_commit_time" \
+              | tr -cd '0-9' \
+              | cut -c1-12
+          )"
+
+          test -n "$stamp"
+
+          # Read the currently recorded release number.
+          old_stamp="$(
+            sed -nE \
+              's|^PKG_VERSION[?]=.*\.([0-9]{6,})$|\1|p' \
+              meow/Makefile \
+              | head -n1
+          )"
+
+          old_release="$(
+            sed -nE \
+              's|^PKG_RELEASE[?]=([0-9]+).*|\1|p' \
+              meow/Makefile \
+              | head -n1
+          )"
+
+          # Re-running the same upstream commit should bump PKG_RELEASE.
+          # A new upstream commit resets it to 1.
+          if [ "${old_stamp:-}" = "$stamp" ]; then
+            release=$(( ${old_release:-1} + 1 ))
+          else
+            release=1
+          fi
+
+          # Examples:
+          #   upstream 0.22.0 + stamp 202610030104
+          #   => 0.22.0.202610030104
+          new_version="${upstream_version}.${stamp}"
+
+          for f in meow/Makefile luci-app-meow/Makefile; do
+            # Update the upstream base version automatically.
+            if grep -qE '^PKG_BASE_VERSION[?]=' "$f"; then
+              sed -i -E \
+                "s|^PKG_BASE_VERSION[?]=.*|PKG_BASE_VERSION?=${upstream_version}|" \
+                "$f"
+            else
+              # Bootstrap repositories that still use a literal PKG_VERSION.
+              sed -i \
+                "/^PKG_NAME:=/a PKG_BASE_VERSION?=${upstream_version}" \
+                "$f"
+            fi
+
+            # Rewrite the generated package version and release.
+            sed -i -E \
+              "s|^PKG_VERSION[?]=.*|PKG_VERSION?=\$(PKG_BASE_VERSION).${stamp}|" \
+              "$f"
+
+            sed -i -E \
+              "s|^PKG_RELEASE[?]=.*|PKG_RELEASE?=${release}|" \
+              "$f"
+
+            grep -qF \
+              "PKG_BASE_VERSION?=${upstream_version}" \
+              "$f"
+
+            grep -qF \
+              "PKG_VERSION?=\$(PKG_BASE_VERSION).${stamp}" \
+              "$f"
+
+            grep -qF \
+              "PKG_RELEASE?=${release}" \
+              "$f"
+          done
+
+          echo "upstream_version=${upstream_version}" >> "$GITHUB_OUTPUT"
+          echo "stamp=${stamp}" >> "$GITHUB_OUTPUT"
+          echo "release=${release}" >> "$GITHUB_OUTPUT"
+          echo "pkg_version=${new_version}" >> "$GITHUB_OUTPUT"
+
+          echo
+          echo "Package version:"
+          grep -H -E '^PKG_(BASE_VERSION|VERSION|RELEASE)' \
+            meow/Makefile \
+            luci-app-meow/Makefile
 
       - name: Sync bundled OpenWrt and LuCI files
         working-directory: ${{ runner.temp }}/upstream
@@ -135,14 +244,23 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/meow"
           mkdir -p "$GITHUB_WORKSPACE/luci-app-meow"
 
-          cp -a openwrt/meow/files "$GITHUB_WORKSPACE/meow/files"
-          cp -a openwrt/luci-app-meow/htdocs "$GITHUB_WORKSPACE/luci-app-meow/htdocs"
-          cp -a openwrt/luci-app-meow/root "$GITHUB_WORKSPACE/luci-app-meow/root"
+          cp -a \
+            openwrt/meow/files \
+            "$GITHUB_WORKSPACE/meow/files"
+
+          cp -a \
+            openwrt/luci-app-meow/htdocs \
+            "$GITHUB_WORKSPACE/luci-app-meow/htdocs"
+
+          cp -a \
+            openwrt/luci-app-meow/root \
+            "$GITHUB_WORKSPACE/luci-app-meow/root"
 
       - name: Update UPSTREAM.json
         shell: bash
         run: |
           set -euo pipefail
+
           python3 - <<'PY'
           import json
           from datetime import datetime, timezone
@@ -152,18 +270,30 @@ jobs:
 
           sha = "${{ steps.upstream.outputs.sha }}"
           subject = "${{ steps.upstream.outputs.subject }}"
+          source_commit_time = "${{ steps.upstream.outputs.source_commit_time }}"
+          upstream_version = "${{ steps.version.outputs.version }}"
+          stamp = "${{ steps.pkgver.outputs.stamp }}"
+          release = int("${{ steps.pkgver.outputs.release }}")
 
           d["repository"] = "https://github.com/meow-rs/meow-rs.git"
           d["path"] = "openwrt/"
           d["branch"] = "${{ inputs.ref }}"
           d["commit"] = sha
           d["commit_short"] = sha[:7]
-          d["synced_at_utc"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-          d["source_commit_time"] = "${{ steps.upstream.outputs.source_commit_time }}"
+          d["synced_at_utc"] = (
+              datetime.now(timezone.utc)
+              .replace(microsecond=0)
+              .isoformat()
+              .replace("+00:00", "Z")
+          )
+          d["source_commit_time"] = source_commit_time
           d["subject"] = subject
+
+          # Keep the package-version information explicit in UPSTREAM.json.
+          d["upstream_version"] = upstream_version
           d["pkg_version"] = "${{ steps.pkgver.outputs.pkg_version }}"
-          d["pkg_version_stamp"] = "${{ steps.pkgver.outputs.stamp }}"
-          d["pkg_release"] = int("${{ steps.pkgver.outputs.release }}")
+          d["pkg_version_stamp"] = stamp
+          d["pkg_release"] = release
 
           with open("UPSTREAM.json", "w", encoding="utf-8") as f:
               json.dump(d, f, ensure_ascii=False, indent=2)
@@ -176,14 +306,23 @@ jobs:
           set -euo pipefail
 
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add             UPSTREAM.json             meow/files             luci-app-meow/htdocs             luci-app-meow/root             meow/Makefile             luci-app-meow/Makefile
+          git add \
+            UPSTREAM.json \
+            meow/files \
+            luci-app-meow/htdocs \
+            luci-app-meow/root \
+            meow/Makefile \
+            luci-app-meow/Makefile
 
           if git diff --cached --quiet; then
             echo "Upstream content is already synchronized"
             exit 0
           fi
 
-          git commit -m "chore(sync): upstream openwrt tree -> ${{ steps.upstream.outputs.sha }} (pkg ${{ steps.pkgver.outputs.pkg_version }}-${{ steps.pkgver.outputs.release }})"
+          git commit \
+            -m "chore(sync): upstream openwrt tree -> ${{ steps.upstream.outputs.sha }} (pkg ${{ steps.pkgver.outputs.pkg_version }}-${{ steps.pkgver.outputs.release }})"
+
           git push origin HEAD:main
