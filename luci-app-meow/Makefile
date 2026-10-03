@@ -3,7 +3,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=luci-app-meow
 
 # Keep in sync with meow/Makefile.
-PKG_BASE_VERSION?=0.21.2
+PKG_BASE_VERSION?=0.22.0
 
 # Rewritten automatically by .github/workflows/sync-upstream.yml; the LuCI
 # package always carries the same version as the core it drives.
