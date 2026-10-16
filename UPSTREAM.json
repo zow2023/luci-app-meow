@@ -2,13 +2,13 @@
   "repository": "https://github.com/meow-rs/meow-rs.git",
   "path": "openwrt/",
   "branch": "main",
-  "commit": "5d7156438bf68636a5b1d00869524726fff03633",
-  "commit_short": "5d71564",
-  "synced_at_utc": "2026-10-14T03:26:11Z",
-  "source_commit_time": "2026-10-13T03:11:07Z",
-  "subject": "fix(dns): parse complete IP literals before nameserver ports (#738)",
-  "pkg_version": "0.22.0.202610130311",
-  "pkg_version_stamp": "202610130311",
+  "commit": "d32a8ce8b1a768fd666fe03f9611783d7b5a57cd",
+  "commit_short": "d32a8ce",
+  "synced_at_utc": "2026-10-16T11:26:22Z",
+  "source_commit_time": "2026-10-16T10:59:04Z",
+  "subject": "chore(release): 0.23.0 (#757)",
+  "pkg_version": "0.23.0.202610161059",
+  "pkg_version_stamp": "202610161059",
   "pkg_release": 1,
-  "upstream_version": "0.22.0"
+  "upstream_version": "0.23.0"
 }
