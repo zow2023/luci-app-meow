@@ -2,13 +2,13 @@
   "repository": "https://github.com/meow-rs/meow-rs.git",
   "path": "openwrt/",
   "branch": "main",
-  "commit": "d32a8ce8b1a768fd666fe03f9611783d7b5a57cd",
-  "commit_short": "d32a8ce",
-  "synced_at_utc": "2026-10-16T11:26:22Z",
-  "source_commit_time": "2026-10-16T10:59:04Z",
-  "subject": "chore(release): 0.23.0 (#757)",
-  "pkg_version": "0.23.0.202610161059",
-  "pkg_version_stamp": "202610161059",
+  "commit": "548e26fb1c42aad6eb1153d09a43d280708f92ac",
+  "commit_short": "548e26f",
+  "synced_at_utc": "2026-10-19T07:19:47Z",
+  "source_commit_time": "2026-10-18T11:34:34Z",
+  "subject": "feat(proxy): skip dialer-proxy members that cannot reach the chained server (#768)",
+  "pkg_version": "0.24.0.202610181134",
+  "pkg_version_stamp": "202610181134",
   "pkg_release": 1,
-  "upstream_version": "0.23.0"
+  "upstream_version": "0.24.0"
 }
