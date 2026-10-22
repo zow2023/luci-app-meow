@@ -2,13 +2,13 @@
   "repository": "https://github.com/meow-rs/meow-rs.git",
   "path": "openwrt/",
   "branch": "main",
-  "commit": "daafe055421b6ac769c9bac507319d52d142c8b9",
-  "commit_short": "daafe05",
-  "synced_at_utc": "2026-10-21T03:26:00Z",
-  "source_commit_time": "2026-10-20T12:00:26Z",
-  "subject": "fix(config): use the GeoIP and ASN databases a mihomo GUI copies in (#784)",
-  "pkg_version": "0.25.0.202610201200",
-  "pkg_version_stamp": "202610201200",
+  "commit": "cddc00e409a4b479c6b2a3c50c6f9b318806873d",
+  "commit_short": "cddc00e",
+  "synced_at_utc": "2026-10-22T03:28:42Z",
+  "source_commit_time": "2026-10-22T02:46:56Z",
+  "subject": "docs(readme): link the Android and iOS apps (#789)",
+  "pkg_version": "0.26.1.202610220246",
+  "pkg_version_stamp": "202610220246",
   "pkg_release": 1,
-  "upstream_version": "0.25.0"
+  "upstream_version": "0.26.1"
 }
