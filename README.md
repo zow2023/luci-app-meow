@@ -1,26 +1,6 @@
 # luci-app-meow
 
 一个精简的 OpenWrt / LuCI meow 包仓库。
-
-目录结构：
-
-```text
-.
-├── meow/
-│   ├── Makefile
-│   ├── prebuilt-meow
-│   └── files/
-├── luci-app-meow/
-│   ├── Makefile
-│   ├── htdocs/
-│   └── root/
-├── .github/
-│   └── workflows/
-│       └── build-core.yml
-├── README.md
-└── UPSTREAM.json
-```
-
 ## Upstream
 
 核心来源固定在 `UPSTREAM.json`：
