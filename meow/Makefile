@@ -3,7 +3,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=meow
 
 # Upstream release baseline. Bump by hand when meow-rs tags a new release.
-PKG_BASE_VERSION?=0.26.1
+PKG_BASE_VERSION?=0.27.0
 
 # PKG_VERSION is rewritten automatically by
 # .github/workflows/sync-upstream.yml from the pinned upstream commit's
@@ -11,7 +11,7 @@ PKG_BASE_VERSION?=0.26.1
 # All-numeric dotted segments keep the version valid for both package
 # managers:  apk -> meow-0.21.2.202610010430-r1.apk
 #            ipk -> meow_0.21.2.202610010430-1_<arch>.ipk
-PKG_VERSION?=$(PKG_BASE_VERSION).202610260313
+PKG_VERSION?=$(PKG_BASE_VERSION).202610281039
 PKG_RELEASE?=1
 
 include $(INCLUDE_DIR)/package.mk

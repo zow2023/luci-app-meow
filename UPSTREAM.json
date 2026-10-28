@@ -2,13 +2,13 @@
   "repository": "https://github.com/meow-rs/meow-rs.git",
   "path": "openwrt/",
   "branch": "main",
-  "commit": "275c5fd733300fafe3abe6546aa2136e58251bc6",
-  "commit_short": "275c5fd",
-  "synced_at_utc": "2026-10-26T07:35:20Z",
-  "source_commit_time": "2026-10-26T03:13:48Z",
-  "subject": "feat(app): ship the Shadowsocks inbound in the full bundle (#791)",
-  "pkg_version": "0.26.1.202610260313",
-  "pkg_version_stamp": "202610260313",
+  "commit": "59fa990c0327ff433bc87dc284f7ff4aac73e9fe",
+  "commit_short": "59fa990",
+  "synced_at_utc": "2026-10-28T12:49:38Z",
+  "source_commit_time": "2026-10-28T10:39:22Z",
+  "subject": "test(listener): run the half-close linger tests' I/O on the real clock (#855)",
+  "pkg_version": "0.27.0.202610281039",
+  "pkg_version_stamp": "202610281039",
   "pkg_release": 1,
-  "upstream_version": "0.26.1"
+  "upstream_version": "0.27.0"
 }
