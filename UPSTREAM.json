@@ -2,13 +2,13 @@
   "repository": "https://github.com/meow-rs/meow-rs.git",
   "path": "openwrt/",
   "branch": "main",
-  "commit": "59fa990c0327ff433bc87dc284f7ff4aac73e9fe",
-  "commit_short": "59fa990",
-  "synced_at_utc": "2026-10-28T12:49:38Z",
-  "source_commit_time": "2026-10-28T10:39:22Z",
-  "subject": "test(listener): run the half-close linger tests' I/O on the real clock (#855)",
-  "pkg_version": "0.27.0.202610281039",
-  "pkg_version_stamp": "202610281039",
+  "commit": "80816302e7ad8f868fdf1619a11bf3c8121696dd",
+  "commit_short": "8081630",
+  "synced_at_utc": "2026-10-30T08:07:27Z",
+  "source_commit_time": "2026-10-30T07:10:44Z",
+  "subject": "chore(release): 0.28.0 (#868)",
+  "pkg_version": "0.28.0.202610300710",
+  "pkg_version_stamp": "202610300710",
   "pkg_release": 1,
-  "upstream_version": "0.27.0"
+  "upstream_version": "0.28.0"
 }
