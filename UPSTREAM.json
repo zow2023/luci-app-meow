@@ -2,13 +2,13 @@
   "repository": "https://github.com/meow-rs/meow-rs.git",
   "path": "openwrt/",
   "branch": "main",
-  "commit": "8704084a2eb4d3eb6d2c10e141c104625f8c1bb2",
-  "commit_short": "8704084",
-  "synced_at_utc": "2026-11-23T04:26:27Z",
-  "source_commit_time": "2026-11-22T23:05:34Z",
-  "subject": "feat(mux): negotiate TCP Brutal rate caps via smux.brutal-opts (#1000)",
-  "pkg_version": "0.29.0.202611222305",
-  "pkg_version_stamp": "202611222305",
+  "commit": "8e4e948464656380f46f3a98cb168fc35d7708db",
+  "commit_short": "8e4e948",
+  "synced_at_utc": "2026-11-26T12:58:38Z",
+  "source_commit_time": "2026-11-26T05:11:50Z",
+  "subject": "chore(release): 0.30.0",
+  "pkg_version": "0.30.0.202611260511",
+  "pkg_version_stamp": "202611260511",
   "pkg_release": 1,
-  "upstream_version": "0.29.0"
+  "upstream_version": "0.30.0"
 }
